@@ -90,7 +90,13 @@ class elasticBeacon(object):
                 self.beacon_flow_bytes_toserver = self.config.get('beacon', 'field_flow_bytes_toserver')
                 self.beacon_flow_id = self.config.get('beacon', 'field_flow_id')
                 self.verbose = self.config.config.getboolean('beacon', 'verbose')
+                self.auth_user = self.config.config.get('beacon','username')
+                self.auth_password = self.config.config.get('beacon', 'password')
                 self.suricata_defaults = self.config.config.getboolean('beacon','suricata_defaults')
+                try:
+                    self.debug = self.config.config.getboolean('beacon', 'debug')
+                except:
+                    pass
 
 
             except Exception as e:
@@ -130,7 +136,8 @@ class elasticBeacon(object):
         try:
             self.vprint('{info}[INFO]{endc} Attempting to connect to elasticsearch...'.format(info=bcolors.OKBLUE,
                                                                                         endc=bcolors.ENDC))
-            self.es = Elasticsearch(self.es_host, port=self.es_port, timeout=self.es_timeout)
+
+            self.es = Elasticsearch(self.es_host, port=self.es_port, timeout=self.es_timeout, http_auth=(self.auth_user, self.auth_password), verify_certs=False)
             self.vprint('{green}[SUCCESS]{endc} Connected to elasticsearch on {host}:{port}'.format(green=bcolors.OKGREEN, endc=bcolors.ENDC, host=self.es_host, port=str(self.es_port)))
         except Exception as e:
             self.vprint(e)
@@ -169,7 +176,7 @@ class elasticBeacon(object):
         gte = int(NOW - h * HOURS)
 
 
-        if self.es_index=='logstash-*':
+        if self.es_index:
             query = {
                 "query": {
                     self.filt: {
@@ -231,6 +238,7 @@ class elasticBeacon(object):
             }
         if fields:
             query["_source"] = list(fields)
+            self.dprint(query)
 
         return query
 
@@ -369,7 +377,7 @@ class elasticBeacon(object):
 
         if csv_out:
             self.vprint('{success} Writing csv to {csv_name}'.format(csv_name=csv_out, success=self.success))
-            beacon_df.to_csv(csv_out)
+            beacon_df.to_csv(csv_out, index=False)
 
         if html_out:
             self.vprint('{success} Writing html file to {html_out}'.format(html_out=html_out, success=self.success))
