@@ -11,7 +11,7 @@ except:
     sys.exit(0)
 
 try:
-    from opensearch import Opensearch as Elasticsearch, helpers, RequestsHttpConnection
+    from opensearchpy import Opensearch as Elasticsearch, helpers, RequestsHttpConnection
 except:
     print("Please make sure you have elasticsearch module installed. pip -r requirements.txt or pip install elasticsearch")
     sys.exit(0)
