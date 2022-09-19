@@ -1,11 +1,9 @@
-FROM centos:latest
+FROM python:2.7.18-slim
 
 MAINTAINER Justin Henderson justin@hasecuritysolutions.com
 
-RUN yum update -y \
-    && yum install -y python python-devel git gcc python-lxml \
-    && curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py \
-    && python get-pip.py \
+RUN apt update \
+    && apt install -y git gcc python-lxml \
     && cd /opt && git clone https://github.com/austin-taylor/flare.git \
     && cd /opt/flare && pip install -r requirements.txt \
     && useradd -ms /bin/bash flare \
