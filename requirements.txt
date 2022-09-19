@@ -10,7 +10,8 @@ requests
 tldextract==2.0.1
 python-geoip
 python-geoip-geolite2
-elasticsearch
+opensearchpy
+opensearch_dsl
 ConfigParser
 pandas
 python-whois
