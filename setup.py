@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name='Flare',
-    version='0.3',
+    version='0.4',
     platforms=["any"],  # or more specific, e.g. "win32", "cygwin", "osx"
     license="""MIT License
 
@@ -28,7 +28,7 @@ setup(
     long_description='Flare is a network analytic framework designed for data scientists, security researchers, and network professionals. Written in Python, it is designed for rapid prototyping and development of behavioral analytics, and intended to make identifying malicious behavior in networks as simple as possible.',
     packages=find_packages(),
     scripts=['bin/hextoip', 'bin/iptohex', 'bin/ipwhois', 'bin/flare_beacon'],
-    data_files=[('flare/data/whoisip/', [
+    data_files=[('flare/data/whoisip', [
         'flare/data/whoisip/asn_names.pkl',
         'flare/data/whoisip/ipasn.dat']),
         ('flare/data/majestic', [
@@ -42,6 +42,16 @@ setup(
             'flare/data/tld/tld_list.pkl']),
         ('flare/data/misc', [
             'flare/data/misc/dga_domains.txt',
-            'flare/data/misc/words.txt'])]
+            'flare/data/misc/words.txt']),
+        ('flare/data/common_crawl', [
+            'flare/data/common_crawl/common-crawl-1m.csv']),
+        ('flare/data/umbrella', [
+            'flare/data/umbrella/top-1m.csv']),
+    ],
+     extras_require={
+        ':python_version == "2.7"': [
+            'ipaddr==2.1.11',
+        ],
+    }
 )
 

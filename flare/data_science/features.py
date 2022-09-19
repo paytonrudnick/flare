@@ -8,13 +8,17 @@ import pandas as pd
 from collections import Counter
 from flare.tools.alexa import Alexa
 
+
 import logging
+logging.getLogger("tldextract").setLevel(logging.CRITICAL)
+
 
 try:
-    #import sklearn
+    import sklearn
     from sklearn import ensemble
     from sklearn import feature_extraction
     from sklearn.model_selection import train_test_split
+    from sklearn.metrics import f1_score
 except:
     logging.error("""[-] Could not import sklearn! Some functions may not operate properly. 
         Please visit http://scikit-learn.org/stable/install.html for more information on scikit-learn""")
@@ -97,14 +101,14 @@ def domain_tld_extract(domain):
     ip_check = ip_matcher(domain)
     if ip_check:
         return domain
-    if len(t) > 2:
-        domain = '.'.join(t[-2:])
-    if len(t) == 2:
-        domain = '.'.join(t)
-    if ':' in domain:
-        return domain.split(':')[0]
-    else:
+
+    try:
+        ext = tldextract.extract(domain)
+        if ext.suffix:
+            return '{}.{}'.format(ext.domain, ext.suffix)
         return domain
+    except:
+        return ''
 
 
 def non_alnum_count(string):
@@ -146,6 +150,7 @@ class dga_classifier(object):
         self.entropy = entropy
         self.domain_extract = domain_extract
 
+
         alexa_df = pd.DataFrame(list(self.a.DOMAINS_TOP1M))
         alexa_df.columns = ['uri']
         alexa_df['domain'] = [self.domain_extract(
@@ -185,7 +190,6 @@ class dga_classifier(object):
         all_domains['entropy'] = [self.entropy(
             x) for x in all_domains['domain']]
 
-        self.clf = ensemble.RandomForestClassifier(n_estimators=20)
 
         self.alexa_vc = feature_extraction.text.CountVectorizer(
             analyzer='char', ngram_range=(3, 5), min_df=1e-4, max_df=1.0)
@@ -214,7 +218,7 @@ class dga_classifier(object):
 
         weird_cond = (all_domains['class'] == 'legit') & (
             all_domains['word_grams'] < 3) & (all_domains['alexa_grams'] < 2)
-        weird = all_domains[weird_cond]
+        #weird = all_domains[weird_cond]
 
         not_weird = all_domains[all_domains['class'] != 'weird']
         X = not_weird.as_matrix(
@@ -226,7 +230,28 @@ class dga_classifier(object):
         # Train on a 80/20 split
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2)
-        self.clf.fit(X_train, y_train)
+
+        print('[+] Training classifier on training set')
+
+        clf = ensemble.RandomForestClassifier(n_estimators=20, oob_score=True)
+        clf.fit(X_train, y_train)
+        y_pred = clf.predict(X_test)
+
+        print('[+] Out of sample legit f1 score {}'.format(f1_score(
+            y_test == 'legit', 
+            y_pred == 'legit',
+            pos_label = 1,
+        )))
+
+        print('[+] Out of sample dga f1 score {}'.format(f1_score(
+            y_test == 'legit', 
+            y_pred == 'legit',
+            pos_label = 0,
+        )))
+        
+        print('[+] Training final classifier')
+        self.clf = ensemble.RandomForestClassifier(n_estimators=20, oob_score=True)
+        self.clf.fit(X, y)
         print('[+] Classifier Ready')
 
     def ngram_count(self, domain):
@@ -245,4 +270,6 @@ class dga_classifier(object):
             _dict_match = self.dict_counts * self.dict_vc.transform([domain]).T
             _X = [len(domain), self.entropy(
                 domain), _alexa_match, _dict_match]
+            if int(sklearn.__version__.split('.')[1]) > 20:
+                _X = [_X]
             return self.clf.predict(_X)[0]

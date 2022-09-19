@@ -11,7 +11,7 @@ except:
     sys.exit(0)
 
 try:
-    from elasticsearch import Elasticsearch, helpers
+    from elasticsearch import Elasticsearch, helpers, RequestsHttpConnection
 except:
     print("Please make sure you have elasticsearch module installed. pip -r requirements.txt or pip install elasticsearch")
     sys.exit(0)
@@ -23,6 +23,9 @@ from flare.tools.whoisip import WhoisLookup
 import time
 import warnings
 import os
+import datetime
+import json
+
 warnings.filterwarnings('ignore')
 
 config_default = os.path.join(os.path.dirname(__file__), '..', '..', 'configs/elasticsearch.ini')
@@ -52,7 +55,7 @@ class elasticBeacon(object):
                  es_index='logstash-flow-*',
                  kibana_version='4',
                  verbose=True,
-                 debug=False):
+                 debug=True):
         """
 
         :param min_occur: Minimum number of triads to be considered beaconing
@@ -75,6 +78,7 @@ class elasticBeacon(object):
                 self.es_host = self.config.get('beacon', 'es_host')
                 self.es_port = int(self.config.get('beacon', 'es_port'))
                 self.es_index = self.config.get('beacon', 'es_index')
+                self.use_ssl = self.config.config.getboolean('beacon', 'use_ssl')
                 self.MIN_OCCURRENCES = int(self.config.get('beacon','min_occur'))
                 self.MIN_PERCENT = int(self.config.get('beacon','min_percent'))
                 self.WINDOW = int(self.config.get('beacon','window'))
@@ -89,6 +93,9 @@ class elasticBeacon(object):
                 self.beacon_timestamp = self.config.get('beacon', 'field_timestamp')
                 self.beacon_flow_bytes_toserver = self.config.get('beacon', 'field_flow_bytes_toserver')
                 self.beacon_flow_id = self.config.get('beacon', 'field_flow_id')
+                self.beacon_event_key = self.config.get('beacon','event_key')
+                self.beacon_event_type = self.config.get('beacon','event_type')
+                self.filter = self.config.get('beacon','filter')
                 self.verbose = self.config.config.getboolean('beacon', 'verbose')
                 self.auth_user = self.config.config.get('beacon','username')
                 self.auth_password = self.config.config.get('beacon', 'password')
@@ -96,7 +103,7 @@ class elasticBeacon(object):
                 try:
                     self.debug = self.config.config.getboolean('beacon', 'debug')
                 except:
-                    pass
+                    self.debug = debug
 
 
             except Exception as e:
@@ -107,6 +114,7 @@ class elasticBeacon(object):
             self.es_host = es_host
             self.es_port = es_port
             self.es_index = es_index
+            self.use_ssl = False
             self.MIN_OCCURRENCES = min_occur
             self.MIN_PERCENT = min_percent
             self.WINDOW = window
@@ -121,23 +129,33 @@ class elasticBeacon(object):
             self.beacon_timestamp = '@timestamp'
             self.beacon_flow_bytes_toserver = 'bytes_toserver'
             self.beacon_flow_id = 'flow_id'
+            self.beacon_event_type = 'flow'
+            self.beacon_event_key = 'event_type'
+            self.filter = ''
             self.verbose = verbose
             self.suricata_defaults = False
+            self.debug = debug
 
         self.ver = {'4': {'filtered': 'query'}, '5': {'bool': 'must'}}
         self.filt = list(self.ver[self.kibana_version].keys())[0]
         self.query = list(self.ver[self.kibana_version].values())[0]
-        self.debug = debug
         self.whois = WhoisLookup()
         self.info = '{info}[INFO]{endc}'.format(info=bcolors.OKBLUE, endc=bcolors.ENDC)
         self.success = '{green}[SUCCESS]{endc}'.format(green=bcolors.OKGREEN, endc=bcolors.ENDC)
-        self.fields = [self.beacon_src_ip, self.beacon_dest_ip, self.beacon_destination_port, 'bytes_toserver', 'dest_degree', 'occurrences', 'percent', 'interval']
+        self.fields = [self.beacon_src_ip, self.beacon_dest_ip, self.beacon_destination_port, self.beacon_flow_bytes_toserver, 'dest_degree', 'occurrences', 'percent', 'interval']
 
         try:
-            self.vprint('{info}[INFO]{endc} Attempting to connect to elasticsearch...'.format(info=bcolors.OKBLUE,
-                                                                                        endc=bcolors.ENDC))
+            _ = (self.auth_user, self.auth_password)
+            self.auth = "Enabled"
+        except AttributeError as e:
+            self.auth = "None"
 
-            self.es = Elasticsearch(self.es_host, port=self.es_port, timeout=self.es_timeout, http_auth=(self.auth_user, self.auth_password), verify_certs=False)
+        try:
+            self.vprint('{info}[INFO]{endc} Attempting to connect to elasticsearch...'.format(info=bcolors.OKBLUE, endc=bcolors.ENDC))
+            if self.auth == "None":
+                self.es = Elasticsearch(self.es_host, port=self.es_port, timeout=self.es_timeout, verify_certs=False, use_ssl=self.use_ssl, connection_class=RequestsHttpConnection)
+            else:
+                self.es = Elasticsearch(self.es_host, port=self.es_port, timeout=self.es_timeout, http_auth=(self.auth_user, self.auth_password), verify_certs=False, use_ssl=self.use_ssl, connection_class=RequestsHttpConnection)
             self.vprint('{green}[SUCCESS]{endc} Connected to elasticsearch on {host}:{port}'.format(green=bcolors.OKGREEN, endc=bcolors.ENDC, host=self.es_host, port=str(self.es_port)))
         except Exception as e:
             self.vprint(e)
@@ -175,14 +193,17 @@ class elasticBeacon(object):
         lte = NOW
         gte = int(NOW - h * HOURS)
 
-
         if self.es_index:
+            if self.filter:
+                self.query_string = "_exists_:" + self.beacon_src_ip + " AND _exists_:" + self.beacon_destination_port + " AND _exists_:"  + self.beacon_dest_ip + " AND " + self.filter
+            else:
+                self.query_string = "_exists_:" + self.beacon_src_ip + " AND _exists_:" + self.beacon_destination_port + " AND _exists_:"  + self.beacon_dest_ip
             query = {
                 "query": {
                     self.filt: {
                         self.query: {
                             "query_string": {
-                                "query": "*",
+                                "query": self.query_string,
                                 "analyze_wildcard": 'true'
                             }
                         },
@@ -191,7 +212,7 @@ class elasticBeacon(object):
                                 "must": [
                                     {
                                         "range": {
-                                            "timestamp": {
+                                            self.beacon_timestamp: {
                                                 "gte": gte,
                                                 "lte": lte,
                                                 "format": "epoch_millis"
@@ -202,18 +223,22 @@ class elasticBeacon(object):
                                 "must_not": []
                             }
                         },
-                            {"term": {"event_type": "flow"}}
+                            {"term": {self.beacon_event_key: self.beacon_event_type}}
                         ]
                     }
                 }
             }
         else:
+            if self.filter:
+                self.query_string = "_exists_:src_ip AND _exists_:dest_ip AND _exists_:dest_port" + self.filter
+            else:
+                self.query_string = "_exists_:src_ip AND _exists_:dest_ip AND _exists_:dest_port"
             query = {
                 "query": {
                     self.filt: {
                         self.query: {
                             "query_string": {
-                                "query": "*",
+                                "query": self.query_string,
                                 "analyze_wildcard": 'true'
                             }
                         },
@@ -242,6 +267,7 @@ class elasticBeacon(object):
 
         return query
 
+    # this is a sliding window average - for notes... percent grouping is "not exactly a thing" .... with love tho
     def percent_grouping(self, d, total):
         mx = 0
         interval = 0
@@ -276,19 +302,17 @@ class elasticBeacon(object):
                                 self.beacon_timestamp, FLOW_BYTES, self.beacon_flow_id)
         self.dprint(query)
         resp = helpers.scan(query=query, client=self.es, scroll="90m", index=self.es_index, timeout="10m")
-        df = pd.DataFrame([rec['_source'] for rec in resp])
+        df = pd.io.json.json_normalize([rec['_source'] for rec in resp])
+        df.rename(columns=dict((x, x.replace("_source.", "")) for x in df.columns), inplace=True)
         if len(df) == 0:
             raise Exception("Elasticsearch did not retrieve any data. Please ensure your settings are correct inside the config file.")
 
         self.dprint(df)
-        df['dest_port'] = df[self.beacon_destination_port].fillna(0).astype(int)
+        df[self.beacon_destination_port] = df[self.beacon_destination_port].fillna(0).astype(int)
 
-        if 'flow' in df.columns:
-            df[self.beacon_flow_bytes_toserver] = df['flow'].apply(lambda x: x.get(self.beacon_flow_bytes_toserver))
-
-            df['triad_id'] = (df[self.beacon_src_ip] + df[self.beacon_dest_ip] + df[self.beacon_destination_port].astype(str)).apply(hash)
-            df['triad_freq'] = df.groupby('triad_id')['triad_id'].transform('count').fillna(0).astype(int)
-            self.high_freq = list(df[df.triad_freq > self.MIN_OCCURRENCES].groupby('triad_id').groups.keys())
+        df['triad_id'] = (df[self.beacon_src_ip] + df[self.beacon_dest_ip] + df[self.beacon_destination_port].astype(str)).apply(hash)
+        df['triad_freq'] = df.groupby('triad_id')['triad_id'].transform('count').fillna(0).astype(int)
+        self.high_freq = list(df[df.triad_freq > self.MIN_OCCURRENCES].groupby('triad_id').groups.keys())
         return df
 
     def find_beacon(self, q_job, beacon_list):
@@ -298,7 +322,7 @@ class elasticBeacon(object):
             self.l_df.acquire()
             work = self.flow_data[self.flow_data.triad_id == triad_id]
             self.l_df.release()
-            
+
             work[self.beacon_timestamp] = pd.to_datetime(work[self.beacon_timestamp])
             work[self.beacon_timestamp] = (work[self.beacon_timestamp].astype(int) / 1000000000).astype(int)
             work = work.sort_values([self.beacon_timestamp])
@@ -309,10 +333,10 @@ class elasticBeacon(object):
             for key in list(d.keys()):
                 if key < self.min_interval:
                     del d[key]
-            
-            # Finding the total numnber of events
+
+            # Finding the total number of events
             total = sum(d.values())
-            
+
             if d and total > self.MIN_OCCURRENCES:
                 window, percent = self.percent_grouping(d, total)
                 if percent > self.MIN_PERCENT and total > self.MIN_OCCURRENCES:
@@ -327,10 +351,10 @@ class elasticBeacon(object):
                     self.l_list.acquire()
                     beacon_list.append([SRC_IP, DEST_IP, DEST_PORT, BYTES_TOSERVER, SRC_DEGREE, OCCURRENCES, PERCENT, WINDOW])
                     self.l_list.release()
-            
+
             q_job.task_done()
 
-    def find_beacons(self, group=True, focus_outbound=False, whois=True, csv_out=None, html_out=None):
+    def find_beacons(self, group=True, focus_outbound=False, whois=True, csv_out=None, html_out=None, json_out=None):
 
         for triad_id in self.high_freq:
             self.q_job.put(triad_id)
@@ -370,8 +394,8 @@ class elasticBeacon(object):
         if group:
             self.vprint('{info} Grouping by destination group IP'.format(info=self.info))
 
-        if whois:
-            self.fields.insert(self.fields.index(self.beacon_dest_ip), 'dest_whois')
+            if whois:
+                self.fields.insert(self.fields.index(self.beacon_dest_ip), 'dest_whois')
             beacon_df = pd.DataFrame(beacon_df.groupby(self.fields).size())
             beacon_df.drop(0, axis=1, inplace=True)
 
@@ -382,5 +406,17 @@ class elasticBeacon(object):
         if html_out:
             self.vprint('{success} Writing html file to {html_out}'.format(html_out=html_out, success=self.success))
             beacon_df.to_html(html_out)
+
+        if json_out:
+            self.vprint('{success} Writing json file to {json_out}'.format(json_out=json_out, success=self.success))
+            now = datetime.datetime.now().isoformat()
+            beacon_df['timestamp'] = now
+            beacon_df['period'] = self.period
+            beacon_df['event_type'] = "beaconing"
+            beacons = beacon_df.to_dict(orient="records")
+
+            with open(json_out, 'a') as out_file:
+                for beacon in beacons:
+                    out_file.write(json.dumps(beacon) + '\n')
 
         return beacon_df

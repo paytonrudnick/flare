@@ -15,6 +15,17 @@ sudo pip install -r requirements.txt
 python setup.py install
 ```
 
+First Use
+------------
+
+Once **Flare** is installed you may use it via the command line by calling **flare_beacon**. You can use command line parameters or call a configuration file (recommended). See the configs directory for sample configuration files.
+
+Example command below:
+
+```bash
+flare_beacon -c /path/to/flare/config/elasticsearch.ini --focus_outbound --whois flare_beacon -json /tmp/flare.json
+```
+
 Core Features
 -------------
 ####
@@ -47,14 +58,18 @@ beacons = eb.find_beacons(group=True, focus_outbound=True)
 Also available in commandline:
 
 ```bash
+CSV OUTPUT
 flare_beacon --whois --focus_outbound -mo=100 --csv_out=beacon_results.csv
 
-or
-
+HTML OUTPUT
 flare_beacon --group --whois --focus_outbound -c configs/elasticsearch.ini -html beacons.html
+
+JSON OUTPUT (for SIEM)
+flare_beacon --whois --focus_outbound -c /opt/flare-master/configs/selks4.ini -json beacon.json -v
 
 ```
 
+Full writeup [here](http://www.austintaylor.io/detect/beaconing/intrusion/detection/system/command/control/flare/elastic/stack/2017/06/10/detect-beaconing-with-flare-elasticsearch-and-intrusion-detection-systems/)
 
 Domain Features
 ===============
