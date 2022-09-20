@@ -10,7 +10,7 @@ requests
 tldextract==2.0.1
 python-geoip
 python-geoip-geolite2
-opensearchpy
+opensearch-py
 opensearch_dsl
 ConfigParser
 pandas
