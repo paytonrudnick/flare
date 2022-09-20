@@ -3,7 +3,6 @@ import sys
 from flare.tools.utils import bcolors
 from flare.base.config import flareConfig
 
-
 try:
     import pandas as pd
 except:
@@ -11,7 +10,7 @@ except:
     sys.exit(0)
 
 try:
-    from opensearchpy import Opensearch as Elasticsearch, helpers, RequestsHttpConnection
+    from opensearchpy import OpenSearch as Elasticsearch, helpers, RequestsHttpConnection
 except:
     print("Please make sure you have elasticsearch module installed. pip -r requirements.txt or pip install elasticsearch")
     sys.exit(0)
