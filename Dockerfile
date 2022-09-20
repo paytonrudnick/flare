@@ -4,7 +4,7 @@ MAINTAINER Justin Henderson justin@hasecuritysolutions.com
 
 RUN apt update \
     && apt install -y git gcc python-lxml \
-    && cd /opt && git clone https://github.com/austin-taylor/flare.git \
+    && cd /opt && git clone https://github.com/HASecuritySolutions/flare.git \
     && cd /opt/flare && pip install -r requirements.txt \
     && useradd -ms /bin/bash flare \
     && mkdir /var/log/flare \
